@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>미술 수행평가 채점표</title>
+<script>
+/* =====================================================================
+   설정 — 학기마다 바꿀 값은 모두 여기서 고치면 됩니다.
+   (프로젝트 이름, 항목 이름, 배점은 화면의 [수정] 단추로도 바꿀 수 있어요.
+    화면에서 바꾼 값이 있으면 그 값이 우선합니다.)
+   ===================================================================== */
+const CONFIG = {
+  // 화면 맨 위 제목
+  TITLE: "미술 수행평가 채점표",
+
+  // 학생 선택 드롭다운
+  STUDENT: {
+    GRADES: [1, 3],          // 학년 목록
+    CLASSES: [1, 2, 3, 4],   // 반 목록
+    MAX_NUMBER: 30,          // 번호는 1번부터 이 번호까지
+  },
+
+  // 단계 이름 (단추에 표시되는 글자). 6개를 유지하세요.
+  LEVELS: ["A", "B", "C", "D", "E", "F"],
+
+  // 프로젝트와 채점 항목 (기본값)
+  //  - points : A, B, C, D, E, F 순서의 배점
+  //  - 한 프로젝트의 A 배점을 모두 더하면 만점(50점)이 됩니다.
+  PROJECTS: [
+    {
+      name: "프로젝트 1",
+      items: [
+        { name: "아이디어 발상", points: [20, 17, 14, 11, 8, 5] },
+        { name: "표현 기법",     points: [15, 13, 11,  9, 7, 5] },
+        { name: "완성도",        points: [15, 13, 11,  9, 7, 5] },
+      ],
+    },
+    {
+      name: "프로젝트 2",
+      items: [
+        { name: "주제 해석",     points: [20, 17, 14, 11, 8, 5] },
+        { name: "조형 요소 활용", points: [15, 13, 11,  9, 7, 5] },
+        { name: "감상 및 성찰",   points: [15, 13, 11,  9, 7, 5] },
+      ],
+    },
+  ],
+
+  // 프로젝트 하나의 만점 (수정 화면에서 A 배점 합계를 확인할 때 씁니다)
+  PROJECT_FULL_SCORE: 50,
+
+  // 최종 등급 기준 (위에서부터 차례로 확인합니다)
+  //  - min      : 기준 점수
+  //  - inclusive: true면 "min점 이상", false면 "min점 초과"
+  //  지금 설정: 80점 이상 A / 60점 초과 80점 미만 B / 60점 이하 C
+  FINAL_GRADES: [
+    { grade: "A", min: 80, inclusive: true },
+    { grade: "B", min: 60, inclusive: false },
+    { grade: "C", min: -Infinity, inclusive: true },
+  ],
+
+  // 이 브라우저에 저장할 때 쓰는 이름. 바꾸면 기존 기록과 따로 저장됩니다.
+  STORAGE_KEY: "art-score-records-v1",
+};
+/* ===================================================================== */
+</script>
+<style>
+  :root {
+    --paper: #F3F5F7;
+    --sheet: #FFFFFF;
+    --ink: #1D2740;
+    --ink-soft: #5B6478;
+    --line: #D6DBE3;
+    --p0: #2F5DB8;
+    --p0-tint: #E6EDFA;
+    --p1: #C98A12;
+    --p1-tint: #FBF1DC;
+    --danger: #B3362F;
+    --ok: #2E7D4F;
+    --radius-btn: 10px;
+    --radius-sheet: 4px;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #151A24;
+      --sheet: #1E2532;
+      --ink: #E9EDF4;
+      --ink-soft: #A3ACBD;
+      --line: #344055;
+      --p0: #7EA2EE;
+      --p0-tint: #233455;
+      --p1: #E8B54A;
+      --p1-tint: #3F3320;
+      --danger: #EF7B72;
+      --ok: #6FCB95;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 24px 16px 64px; }
+
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { margin: 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+
+  /* 학생 선택 */
+  .student {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+    background: var(--sheet); border-radius: var(--radius-sheet);
+    box-shadow: 0 1px 0 var(--line);
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .student label { display: flex; align-items: center; gap: 6px; font-weight: 600; }
+  .student select {
+    font: inherit; font-weight: 700; color: var(--ink);
+    background: var(--paper); border: 1.5px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; min-width: 76px; cursor: pointer;
+  }
+  .student .hint { color: var(--ink-soft); font-size: 0.9rem; margin-left: auto; }
+  .student .hint.exists { color: var(--danger); }
+
+  /* 채점 영역 */
+  .projects { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .project {
+    background: var(--sheet);
+    border-radius: var(--radius-sheet);
+    border-top: 6px solid var(--c);
+    padding: 16px 16px 12px;
+    box-shadow: 0 1px 0 var(--line);
+  }
+  .project[data-p="0"] { --c: var(--p0); --tint: var(--p0-tint); }
+  .project[data-p="1"] { --c: var(--p1); --tint: var(--p1-tint); }
+  .project-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+  .project-head h2 { margin: 0; font-size: 1.1rem; }
+  .subtotal { font-variant-numeric: tabular-nums; color: var(--ink-soft); white-space: nowrap; }
+  .subtotal b { color: var(--c); font-size: 1.3rem; }
+
+  .item { padding: 10px 0; border-top: 1px solid var(--line); }
+  .item:first-of-type { border-top: 0; }
+  .item-name { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 8px; gap: 8px; }
+  .item-name span:last-child { font-weight: 400; color: var(--ink-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .levels { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .lv {
+    appearance: none;
+    border: 1.5px solid var(--line);
+    background: var(--sheet);
+    color: var(--ink);
+    border-radius: var(--radius-btn);
+    padding: 8px 0 6px;
+    min-height: 52px;
+    cursor: pointer;
+    font: inherit;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    line-height: 1.15;
+  }
+  .lv .l { font-weight: 800; font-size: 1.05rem; }
+  .lv .pt { font-size: 0.78rem; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .lv:hover { border-color: var(--c); }
+  .lv[aria-pressed="true"] { background: var(--c); border-color: var(--c); color: #fff; }
+  .lv[aria-pressed="true"] .pt { color: rgba(255,255,255,0.85); }
+  @media (prefers-color-scheme: dark) {
+    .lv[aria-pressed="true"] { color: #10151F; }
+    .lv[aria-pressed="true"] .pt { color: rgba(16,21,31,0.75); }
+  }
+
+  /* 합계 막대 */
+  .total-bar {
+    position: sticky; bottom: 0;
+    margin-top: 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border-radius: var(--radius-sheet);
+    padding: 12px 16px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px;
+  }
+  .total-num { font-size: 2.2rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
+  .total-num small { font-size: 1rem; font-weight: 400; opacity: 0.7; }
+  .grade-badge {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 1.6rem; font-weight: 900;
+    background: var(--paper); color: var(--ink);
+  }
+  .total-meta { font-size: 0.9rem; opacity: 0.85; flex: 1 1 160px; }
+  .actions { display: flex; gap: 8px; }
+
+  button.btn {
+    appearance: none; font: inherit; cursor: pointer;
+    border-radius: var(--radius-btn);
+    padding: 10px 18px; font-weight: 700;
+    border: 1.5px solid transparent;
+  }
+  .btn-save { background: var(--p1); color: #1D1608; }
+  .btn-clear { background: transparent; color: var(--paper); border-color: rgba(255,255,255,0.4); }
+  @media (prefers-color-scheme: dark) { .btn-clear { border-color: rgba(0,0,0,0.3); } }
+  .btn-line { background: var(--sheet); color: var(--ink); border-color: var(--line); }
+  .btn-primary { background: var(--p0); color: #fff; }
+  @media (prefers-color-scheme: dark) { .btn-primary { color: #10151F; } }
+  .btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--p0); outline-offset: 2px; }
+
+  /* 수정 화면 */
+  .settings {
+    background: var(--sheet); border-radius: var(--radius-sheet);
+    border: 2px dashed var(--p0);
+    padding: 16px; margin-bottom: 16px;
+  }
+  .settings h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  .settings .lead { margin: 0 0 14px; color: var(--ink-soft); font-size: 0.9rem; }
+  .set-project { padding: 12px 0; border-top: 1px solid var(--line); }
+  .set-project:first-of-type { border-top: 0; }
+  .set-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 10px; }
+  .set-row label { font-weight: 700; min-width: 72px; }
+  .settings input[type="text"] {
+    font: inherit; color: var(--ink); background: var(--paper);
+    border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    flex: 1 1 200px; min-width: 0;
+  }
+  .set-item { background: var(--paper); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .set-item .set-row { margin-bottom: 8px; }
+  .pts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .pts label { display: flex; flex-direction: column; align-items: center; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); gap: 2px; }
+  .pts input {
+    width: 100%; font: inherit; text-align: center; color: var(--ink);
+    background: var(--sheet); border: 1.5px solid var(--line); border-radius: 8px; padding: 6px 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .sum-check { font-size: 0.9rem; font-weight: 600; }
+  .sum-check.ok { color: var(--ok); }
+  .sum-check.bad { color: var(--danger); }
+  .set-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .set-actions .spacer { flex: 1; }
+  .set-error { color: var(--danger); font-size: 0.9rem; margin-top: 8px; }
+
+  /* 기록 표 */
+  .records { margin-top: 36px; }
+  .records-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .records-head h2 { margin: 0; font-size: 1.2rem; }
+  .records-head h2 span { color: var(--ink-soft); font-weight: 400; font-size: 0.95rem; }
+  .records-head .tools { display: flex; gap: 8px; flex-wrap: wrap; }
+  .table-scroll { overflow-x: auto; background: var(--sheet); border-radius: var(--radius-sheet); box-shadow: 0 1px 0 var(--line); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 0.92rem; }
+  th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  thead th { font-weight: 700; background: var(--sheet); }
+  thead tr:first-child th.pg0 { color: var(--p0); border-bottom: 2px solid var(--p0); }
+  thead tr:first-child th.pg1 { color: var(--p1); border-bottom: 2px solid var(--p1); }
+  td .lt { color: var(--ink-soft); font-size: 0.78rem; margin-left: 2px; }
+  td.sub { font-weight: 700; }
+  td.sum { font-weight: 800; }
+  td.grd { font-weight: 900; }
+  tr.just td { background: var(--p0-tint); }
+  tr.cur td { background: var(--p1-tint); }
+  .del { appearance: none; border: 0; background: none; color: var(--danger); cursor: pointer; font: inherit; padding: 4px 6px; border-radius: 6px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .empty { padding: 28px 16px; text-align: center; color: var(--ink-soft); }
+
+  .toast {
+    position: fixed; left: 50%; top: 16px; transform: translateX(-50%);
+    background: var(--ink); color: var(--paper);
+    padding: 10px 18px; border-radius: 999px; font-weight: 600;
+    opacity: 0; pointer-events: none; transition: opacity .2s;
+    z-index: 10; max-width: calc(100% - 32px); text-align: center;
+  }
+  .toast.show { opacity: 1; }
+  .warn { margin-top: 10px; color: var(--danger); font-size: 0.9rem; }
+
+  @media (max-width: 520px) {
+    .wrap { padding: 16px 12px 48px; }
+    h1 { font-size: 1.35rem; }
+    .lv { min-height: 48px; }
+    .total-num { font-size: 1.9rem; }
+    .actions { width: 100%; }
+    .actions .btn { flex: 1; }
+    .student .hint { margin-left: 0; width: 100%; }
+    .student select { min-width: 64px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="title"></h1>
+    <button class="btn btn-line" id="editBtn" type="button" aria-expanded="false" aria-controls="settings">항목·배점 수정</button>
+  </header>
+
+  <section class="settings" id="settings" hidden aria-labelledby="setTitle"></section>
+
+  <section class="student" aria-label="학생 선택">
+    <label>학년 <select id="selGrade"></select></label>
+    <label>반 <select id="selClass"></select></label>
+    <label>번호 <select id="selNo"></select></label>
+    <span class="hint" id="studentHint"></span>
+  </section>
+
+  <section class="projects" id="projects" aria-label="채점 항목"></section>
+
+  <div class="total-bar" aria-live="polite">
+    <div class="total-num"><span id="total">0</span><small> / <span id="max">100</span></small></div>
+    <div class="grade-badge" id="grade">–</div>
+    <div class="total-meta" id="meta"></div>
+    <div class="actions">
+      <button class="btn btn-clear" id="clearBtn" type="button">다시 고르기</button>
+      <button class="btn btn-save" id="saveBtn" type="button">저장</button>
+    </div>
+  </div>
+  <div class="warn" id="warn" hidden></div>
+
+  <section class="records">
+    <div class="records-head">
+      <h2>저장한 기록 <span id="count"></span></h2>
+      <div class="tools">
+        <button class="btn btn-line" id="copyBtn" type="button">표 복사 (엑셀용)</button>
+        <button class="btn btn-danger" id="wipeBtn" type="button">기록 모두 지우기</button>
+      </div>
+    </div>
+    <div class="table-scroll">
+      <table id="table"></table>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const L = CONFIG.LEVELS;
+  const S = CONFIG.STUDENT;
+  const REC_KEY = CONFIG.STORAGE_KEY;
+  const SET_KEY = CONFIG.STORAGE_KEY + "-settings";
+  const $ = (id) => document.getElementById(id);
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+
+  let P = clone(CONFIG.PROJECTS);              // 지금 쓰는 항목·배점
+  let selection = [];                          // selection[p][i] = 단계 번호 또는 null
+  let records = [];
+  let storageOK = true;
+  let lastSavedId = null;
+  let dirty = false;          // 저장하지 않은 선택이 있는지
+  let prevStudent = null;     // 드롭다운을 되돌릴 때 쓰는 직전 학생
+
+  /* ---------- 저장소 ---------- */
+  function readJSON(key) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
+    catch (e) { storageOK = false; return null; }
+  }
+  function writeJSON(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); storageOK = true; }
+    catch (e) { storageOK = false; }
+    showStorageWarn();
+  }
+  function removeKey(key) { try { localStorage.removeItem(key); } catch (e) {} }
+  function showStorageWarn() {
+    $("warn").hidden = storageOK;
+    $("warn").textContent = storageOK ? "" :
+      "이 브라우저에서는 기록을 보관할 수 없습니다. 파일을 내려받아 크롬이나 엣지로 직접 열어 주세요.";
+  }
+  function validProjects(v) {
+    return Array.isArray(v) && v.length === CONFIG.PROJECTS.length &&
+      v.every((p, pi) => p && typeof p.name === "string" && Array.isArray(p.items) &&
+        p.items.length === CONFIG.PROJECTS[pi].items.length &&
+        p.items.every(it => typeof it.name === "string" && Array.isArray(it.points) && it.points.length === L.length));
+  }
+  function load() {
+    const r = readJSON(REC_KEY);
+    records = Array.isArray(r) ? r : [];
+    records.forEach((x, i) => { if (!x.id) x.id = "old" + i; });
+    const s = readJSON(SET_KEY);
+    if (validProjects(s)) P = s;
+  }
+  const persistRecords = () => writeJSON(REC_KEY, records);
+
+  /* ---------- 계산 ---------- */
+  const emptySelection = () => P.map(p => p.items.map(() => null));
+  const maxOf = (p) => P[p].items.reduce((s, it) => s + Math.max(...it.points), 0);
+  const maxTotal = () => P.reduce((s, _, p) => s + maxOf(p), 0);
+  const subtotal = (p) => P[p].items.reduce((s, it, i) => s + (selection[p][i] == null ? 0 : it.points[selection[p][i]]), 0);
+  const total = () => P.reduce((s, _, p) => s + subtotal(p), 0);
+  function gradeOf(score) {
+    for (const g of CONFIG.FINAL_GRADES) {
+      if (g.inclusive ? score >= g.min : score > g.min) return g.grade;
+    }
+    return CONFIG.FINAL_GRADES[CONFIG.FINAL_GRADES.length - 1].grade;
+  }
+  const allPicked = () => selection.every(p => p.every(v => v != null));
+  const pickedCount = () => selection.flat().filter(v => v != null).length;
+  const itemCount = () => selection.flat().length;
+
+  /* ---------- 학생 선택 ---------- */
+  function fillSelect(sel, values, unit) {
+    sel.innerHTML = values.map(v => `<option value="${v}">${v}${unit}</option>`).join("");
+  }
+  function buildStudent() {
+    fillSelect($("selGrade"), S.GRADES, "학년");
+    fillSelect($("selClass"), S.CLASSES, "반");
+    fillSelect($("selNo"), Array.from({ length: S.MAX_NUMBER }, (_, i) => i + 1), "번");
+    ["selGrade", "selClass", "selNo"].forEach(id => $(id).addEventListener("change", onStudentChange));
+  }
+  function setStudent(st) {
+    $("selGrade").value = st.g; $("selClass").value = st.c; $("selNo").value = st.n;
+  }
+  function onStudentChange() {
+    if (dirty && prevStudent && !confirm(`${label(prevStudent)}의 점수를 아직 저장하지 않았습니다. 저장하지 않고 학생을 바꿀까요?`)) {
+      setStudent(prevStudent);
+      return;
+    }
+    loadStudent();
+  }
+  // 고른 학생의 마지막 저장 내용을 불러옵니다. 저장된 적이 없으면 빈 채점표로 시작합니다.
+  function loadStudent() {
+    const st = currentStudent();
+    const rec = findRecord(st);
+    selection = emptySelection();
+    if (rec && Array.isArray(rec.levels)) {
+      selection = P.map((proj, p) => proj.items.map((_, i) => {
+        const k = L.indexOf(rec.levels?.[p]?.[i]);
+        return k >= 0 ? k : null;
+      }));
+    }
+    prevStudent = st;
+    dirty = false;
+    refresh();
+    renderTable();
+  }
+  const currentStudent = () => ({ g: +$("selGrade").value, c: +$("selClass").value, n: +$("selNo").value });
+  const findRecord = (st) => records.find(r => r.g === st.g && r.c === st.c && r.n === st.n);
+  function updateHint() {
+    const st = currentStudent();
+    const ex = findRecord(st);
+    const h = $("studentHint");
+    h.classList.toggle("exists", !!ex);
+    h.textContent = ex
+      ? `${st.g}학년 ${st.c}반 ${st.n}번 · 마지막 저장 ${ex.total}점(${ex.grade}) ${timeText(ex.savedAt)}${dirty ? " · 고친 내용은 저장해야 반영됩니다" : ""}`
+      : `${st.g}학년 ${st.c}반 ${st.n}번 · 아직 저장한 점수가 없습니다`;
+  }
+
+  /* ---------- 채점 화면 ---------- */
+  function buildProjects() {
+    const box = $("projects");
+    box.innerHTML = "";
+    P.forEach((proj, p) => {
+      const sec = document.createElement("article");
+      sec.className = "project";
+      sec.dataset.p = p % 2;
+      let html = `
+        <div class="project-head">
+          <h2>${esc(proj.name)}</h2>
+          <div class="subtotal"><b id="sub${p}">0</b> / ${maxOf(p)}</div>
+        </div>`;
+      proj.items.forEach((it, i) => {
+        html += `<div class="item">
+          <div class="item-name"><span>${esc(it.name)}</span><span id="pt${p}_${i}">–</span></div>
+          <div class="levels" role="group" aria-label="${esc(proj.name)} ${esc(it.name)}">`;
+        L.forEach((letter, k) => {
+          html += `<button type="button" class="lv" data-p="${p}" data-i="${i}" data-k="${k}" aria-pressed="false"
+                    aria-label="${esc(letter)}, ${it.points[k]}점"><span class="l">${esc(letter)}</span><span class="pt">${it.points[k]}</span></button>`;
+        });
+        html += `</div></div>`;
+      });
+      sec.innerHTML = html;
+      box.appendChild(sec);
+    });
+    $("max").textContent = maxTotal();
+  }
+  $("projects").addEventListener("click", (e) => {
+    const b = e.target.closest(".lv");
+    if (!b) return;
+    const p = +b.dataset.p, i = +b.dataset.i, k = +b.dataset.k;
+    selection[p][i] = selection[p][i] === k ? null : k;   // 같은 단추를 다시 누르면 해제
+    dirty = true;
+    refresh();
+    updateHint();
+  });
+
+  function refresh() {
+    document.querySelectorAll(".lv").forEach(b => {
+      const on = selection[+b.dataset.p][+b.dataset.i] === +b.dataset.k;
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    P.forEach((proj, p) => {
+      $("sub" + p).textContent = subtotal(p);
+      proj.items.forEach((it, i) => {
+        const v = selection[p][i];
+        $(`pt${p}_${i}`).textContent = v == null ? "–" : `${L[v]} · ${it.points[v]}점`;
+      });
+    });
+    const t = total();
+    $("total").textContent = t;
+    const done = allPicked();
+    $("grade").textContent = done ? gradeOf(t) : "–";
+    $("meta").textContent = done
+      ? "모든 항목을 골랐습니다. 저장을 누르세요."
+      : `${itemCount()}개 항목 중 ${pickedCount()}개를 골랐습니다.`;
+  }
+
+  /* ---------- 수정 화면 ---------- */
+  function openSettings() {
+    const box = $("settings");
+    let html = `<h2 id="setTitle">항목·배점 수정</h2>
+      <p class="lead">배점은 A부터 F까지 순서대로 적어 주세요. 이미 저장한 기록의 점수는 바뀌지 않습니다.</p>`;
+    P.forEach((proj, p) => {
+      html += `<div class="set-project">
+        <div class="set-row"><label for="sp${p}">프로젝트 ${p + 1}</label>
+          <input type="text" id="sp${p}" value="${esc(proj.name)}" maxlength="30"></div>`;
+      proj.items.forEach((it, i) => {
+        html += `<div class="set-item">
+          <div class="set-row"><label for="si${p}_${i}">항목 ${i + 1}</label>
+            <input type="text" id="si${p}_${i}" value="${esc(it.name)}" maxlength="30"></div>
+          <div class="pts">`;
+        L.forEach((letter, k) => {
+          html += `<label>${esc(letter)}<input type="number" inputmode="numeric" min="0" max="100" step="1"
+                    id="sv${p}_${i}_${k}" value="${it.points[k]}" aria-label="${esc(it.name)} ${esc(letter)} 배점"></label>`;
+        });
+        html += `</div></div>`;
+      });
+      html += `<div class="sum-check" id="sc${p}"></div></div>`;
+    });
+    html += `<div class="set-error" id="setError" hidden></div>
+      <div class="set-actions">
+        <button class="btn btn-danger" type="button" id="setReset">처음 값으로 되돌리기</button>
+        <span class="spacer"></span>
+        <button class="btn btn-line" type="button" id="setCancel">취소</button>
+        <button class="btn btn-primary" type="button" id="setSave">수정 내용 저장</button>
+      </div>`;
+    box.innerHTML = html;
+    box.hidden = false;
+    $("editBtn").setAttribute("aria-expanded", "true");
+    $("editBtn").textContent = "수정 닫기";
+    box.addEventListener("input", updateSumChecks);
+    $("setCancel").addEventListener("click", closeSettings);
+    $("setSave").addEventListener("click", saveSettings);
+    $("setReset").addEventListener("click", resetSettings);
+    updateSumChecks();
+    $("sp0").focus();
+  }
+  function closeSettings() {
+    $("settings").hidden = true;
+    $("settings").innerHTML = "";
+    $("editBtn").setAttribute("aria-expanded", "false");
+    $("editBtn").textContent = "항목·배점 수정";
+  }
+  function updateSumChecks() {
+    P.forEach((proj, p) => {
+      let sum = 0;
+      proj.items.forEach((_, i) => {
+        const vals = L.map((_, k) => Number($(`sv${p}_${i}_${k}`).value) || 0);
+        sum += Math.max(...vals);
+      });
+      const el = $("sc" + p);
+      const full = CONFIG.PROJECT_FULL_SCORE;
+      el.className = "sum-check " + (sum === full ? "ok" : "bad");
+      el.textContent = sum === full
+        ? `가장 높은 배점의 합계: ${sum}점 (만점 ${full}점과 같습니다)`
+        : `가장 높은 배점의 합계: ${sum}점 (만점 ${full}점과 다릅니다)`;
+    });
+  }
+  function saveSettings() {
+    const next = [];
+    const errors = [];
+    P.forEach((proj, p) => {
+      const name = $("sp" + p).value.trim();
+      if (!name) errors.push(`프로젝트 ${p + 1}의 이름을 적어 주세요.`);
+      const items = proj.items.map((_, i) => {
+        const iname = $(`si${p}_${i}`).value.trim();
+        if (!iname) errors.push(`프로젝트 ${p + 1}의 항목 ${i + 1} 이름을 적어 주세요.`);
+        const points = L.map((letter, k) => {
+          const raw = $(`sv${p}_${i}_${k}`).value;
+          const n = Number(raw);
+          if (raw === "" || !Number.isFinite(n) || n < 0) {
+            errors.push(`프로젝트 ${p + 1} 항목 ${i + 1}의 ${letter} 배점을 0 이상의 숫자로 적어 주세요.`);
+            return 0;
+          }
+          return Math.round(n * 10) / 10;
+        });
+        return { name: iname, points };
+      });
+      next.push({ name, items });
+    });
+    const errBox = $("setError");
+    if (errors.length) {
+      errBox.hidden = false;
+      errBox.textContent = errors[0] + (errors.length > 1 ? ` 외 ${errors.length - 1}건` : "");
+      return;
+    }
+    const off = next.some(p => p.items.reduce((s, it) => s + Math.max(...it.points), 0) !== CONFIG.PROJECT_FULL_SCORE);
+    if (off && !confirm(`만점이 ${CONFIG.PROJECT_FULL_SCORE}점이 아닌 프로젝트가 있습니다. 그래도 저장할까요?`)) return;
+    P = next;
+    writeJSON(SET_KEY, P);
+    applyProjects();
+    closeSettings();
+    toast("항목과 배점을 수정했습니다.");
+  }
+  function resetSettings() {
+    if (!confirm("항목 이름과 배점을 코드 맨 위의 처음 값으로 되돌릴까요?")) return;
+    P = clone(CONFIG.PROJECTS);
+    removeKey(SET_KEY);
+    applyProjects();
+    closeSettings();
+    toast("처음 값으로 되돌렸습니다.");
+  }
+  function applyProjects() {
+    selection = emptySelection();
+    buildProjects();
+    loadStudent();
+  }
+
+  /* ---------- 기록 표 ---------- */
+  const sortRecords = () => records.sort((a, b) => (a.g - b.g) || (a.c - b.c) || (a.n - b.n));
+  function headerCells() {
+    const cols = ["학년", "반", "번호"];
+    P.forEach(proj => {
+      proj.items.forEach(it => cols.push(`${proj.name} ${it.name}`));
+      cols.push(`${proj.name} 소계`);
+    });
+    cols.push("최종 점수", "최종 등급");
+    return cols;
+  }
+  const show = (v) => (v == null ? "" : v);
+  function rowValues(r) {
+    const v = [show(r.g), show(r.c), show(r.n)];
+    P.forEach((proj, p) => {
+      proj.items.forEach((_, i) => v.push(show(r.scores?.[p]?.[i])));
+      v.push(show(r.subtotals?.[p]));
+    });
+    v.push(r.total, r.grade);
+    return v;
+  }
+  function renderTable() {
+    const tbl = $("table");
+    $("count").textContent = records.length ? `${records.length}명` : "";
+    updateHint();
+    if (!records.length) {
+      tbl.innerHTML = `<tbody><tr><td class="empty">아직 저장한 기록이 없습니다. 학생을 고르고 단계를 누른 뒤 저장하세요.</td></tr></tbody>`;
+      return;
+    }
+    sortRecords();
+    let h1 = `<tr><th rowspan="2">학년</th><th rowspan="2">반</th><th rowspan="2">번호</th>`;
+    let h2 = `<tr>`;
+    P.forEach((proj, p) => {
+      h1 += `<th class="pg${p % 2}" colspan="${proj.items.length + 1}">${esc(proj.name)}</th>`;
+      proj.items.forEach(it => { h2 += `<th>${esc(it.name)}</th>`; });
+      h2 += `<th>소계</th>`;
+    });
+    h1 += `<th rowspan="2">최종 점수</th><th rowspan="2">등급</th><th rowspan="2"><span class="sr">삭제</span></th></tr>`;
+    h2 += `</tr>`;
+
+    let body = "";
+    records.forEach((r) => {
+      const cur = prevStudent && r.g === prevStudent.g && r.c === prevStudent.c && r.n === prevStudent.n;
+      body += `<tr${r.id === lastSavedId ? ' class="just"' : cur ? ' class="cur"' : ""}><td>${show(r.g)}</td><td>${show(r.c)}</td><td>${show(r.n)}</td>`;
+      P.forEach((proj, p) => {
+        proj.items.forEach((_, i) => {
+          body += `<td>${show(r.scores?.[p]?.[i])}<span class="lt">${esc(show(r.levels?.[p]?.[i]))}</span></td>`;
+        });
+        body += `<td class="sub">${show(r.subtotals?.[p])}</td>`;
+      });
+      body += `<td class="sum">${r.total}</td><td class="grd">${esc(r.grade)}</td>
+               <td><button class="del" type="button" data-id="${esc(r.id)}" aria-label="${label(r)} 기록 삭제">삭제</button></td></tr>`;
+    });
+    tbl.innerHTML = `<thead>${h1}${h2}</thead><tbody>${body}</tbody>`;
+  }
+  function timeText(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const pad = (x) => String(x).padStart(2, "0");
+    return `(${d.getMonth() + 1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())})`;
+  }
+  const label = (r) => r.g != null ? `${r.g}학년 ${r.c}반 ${r.n}번` : "이";
+
+  /* ---------- 동작 ---------- */
+  function save() {
+    if (!allPicked()) {
+      toast(`아직 고르지 않은 항목이 ${itemCount() - pickedCount()}개 있습니다.`);
+      return;
+    }
+    const st = currentStudent();
+    const existing = findRecord(st);
+
+    const t = total();
+    const rec = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      g: st.g, c: st.c, n: st.n,
+      levels: selection.map(p => p.map(k => L[k])),
+      scores: selection.map((p, pi) => p.map((k, i) => P[pi].items[i].points[k])),
+      subtotals: P.map((_, p) => subtotal(p)),
+      total: t,
+      grade: gradeOf(t),
+      savedAt: new Date().toISOString(),
+    };
+    if (existing) records.splice(records.indexOf(existing), 1, rec);
+    else records.push(rec);
+    lastSavedId = rec.id;
+    persistRecords();
+    toast(`${label(st)} ${t}점(${rec.grade})을 저장했습니다.`);
+
+    // 다음 번호로 넘어가기
+    const noSel = $("selNo");
+    dirty = false;
+    if (noSel.selectedIndex < noSel.options.length - 1) noSel.selectedIndex += 1;
+    loadStudent();
+    window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
+
+  function copyTable() {
+    if (!records.length) { toast("복사할 기록이 없습니다."); return; }
+    sortRecords();
+    const text = [headerCells().join("\t"), ...records.map(r => rowValues(r).join("\t"))].join("\n");
+    const done = () => toast("표를 복사했습니다. 엑셀에서 붙여넣기 하세요.");
+    const fail = () => toast("복사하지 못했습니다.");
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text) ? done() : fail());
+    } else {
+      fallbackCopy(text) ? done() : fail();
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+  }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  /* ---------- 시작 ---------- */
+  document.title = CONFIG.TITLE;
+  $("title").textContent = CONFIG.TITLE;
+  load();
+  buildStudent();
+  selection = emptySelection();
+  buildProjects();
+  loadStudent();
+  showStorageWarn();
+
+  $("editBtn").addEventListener("click", () => $("settings").hidden ? openSettings() : closeSettings());
+  $("saveBtn").addEventListener("click", save);
+  $("clearBtn").addEventListener("click", () => { selection = emptySelection(); dirty = !!findRecord(currentStudent()); refresh(); updateHint(); });
+  $("copyBtn").addEventListener("click", copyTable);
+  $("wipeBtn").addEventListener("click", () => {
+    if (!records.length) return;
+    if (confirm(`저장한 기록 ${records.length}개를 모두 지울까요? 되돌릴 수 없습니다.`)) {
+      records = []; persistRecords(); if (!dirty) loadStudent(); else renderTable(); toast("기록을 모두 지웠습니다.");
+    }
+  });
+  $("table").addEventListener("click", (e) => {
+    const b = e.target.closest(".del");
+    if (!b) return;
+    const idx = records.findIndex(r => r.id === b.dataset.id);
+    if (idx < 0) return;
+    if (confirm(`${label(records[idx])} 기록을 지울까요?`)) {
+      const wasCurrent = prevStudent && records[idx].g === prevStudent.g && records[idx].c === prevStudent.c && records[idx].n === prevStudent.n;
+      records.splice(idx, 1); persistRecords();
+      if (wasCurrent && !dirty) loadStudent(); else renderTable();
+    }
+  });
+})();
+</script>
+</body>
+</html>
